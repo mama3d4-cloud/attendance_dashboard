@@ -329,6 +329,15 @@ ARABIC_NAME_MAP = {
     "32": "محسن ابو زيدان",
     "33": "جبل",
     "35": "عبدو",
+
+    # أسماء تمت إضافتها
+    "39": "وحيد",
+    "40": "فهد",
+    "42": "وامق",
+    "43": "سامر",
+    "44": "بيان",
+    "45": "أسامة",
+
     "37": "إفح",
     "47": "سفيان",
     "48": "أحمد الصالحي",
@@ -679,17 +688,29 @@ if len(dff) == 0:
 # =========================================================
 total_rows = len(dff)
 absent_days = int(dff["غياب"].sum())
+leave_days = int(dff["إجازة"].sum())       # ← جديد
 late_days = int(dff["تأخر"].sum())
 late_minutes = int(dff["دقائق التأخير"].sum())
 early_minutes = int(dff["دقائق الانصراف المبكر"].sum())
+
 attendance_rate = 0 if total_rows == 0 else (1 - absent_days / total_rows) * 100
 
-k1, k2, k3, k4 = st.columns(4, gap="small")
-with k1: kpi_card("نسبة الحضور", f"{attendance_rate:.1f}%")
-with k2: kpi_card("مجموع دقائق التأخير", f"{late_minutes:,}")
-with k3: kpi_card("أيام التأخير", f"{late_days:,}")
-with k4: kpi_card("أيام الغياب", f"{absent_days:,}")
-#with k5: kpi_card("عدد السجلات", f"{total_rows:,}")
+k1, k2, k3, k4, k5 = st.columns(5, gap="small")
+
+with k1:
+    kpi_card("نسبة الحضور", f"{attendance_rate:.1f}%")
+
+with k2:
+    kpi_card("مجموع دقائق التأخير", f"{late_minutes:,}")
+
+with k3:
+    kpi_card("أيام التأخير", f"{late_days:,}")
+
+with k4:
+    kpi_card("أيام الغياب", f"{absent_days:,}")
+
+with k5:
+    kpi_card("أيام الإجازات", f"{leave_days:,}")
 
 st.markdown("---")
 
@@ -1272,7 +1293,7 @@ with tabs[1]:
             use_container_width=True,
             hide_index=True
         )
-        st.caption(" اقتراح: اربط هذه الأيام بأحداث (إجازات/طقس/مناسبات/ضغط عمل) عشان تصير Insight قوية للإدارة.")
+        #st.caption(" اقتراح: اربط هذه الأيام بأحداث (إجازات/طقس/مناسبات/ضغط عمل) عشان تصير Insight قوية للإدارة.")
 
     else:
         st.info("ما قدرت أحدد Outliers (البيانات قليلة أو التباين ضعيف).")
@@ -1345,31 +1366,29 @@ with tabs[2]:
     ))
     apply_plotly_theme(fig, height=420, showlegend=False, hovermode="closest")
     st.plotly_chart(fig, use_container_width=True, key="heat_att")
-
-# =========================================================
-# Tab 4: Employees Performance
-# =========================================================
 with tabs[3]:
-    st.markdown("##  أداء الموظفين ")
+    st.markdown("## أداء الموظفين")
 
-    left, right = st.columns([1.15, 1], gap="large")
+    # =========================================================
+    # أفضل 15 حضورًا
+    # =========================================================
+    st.markdown("---")
 
-    with left:
-        st.subheader(" ملخص شامل للموظفين")
-        view = per_emp.sort_values(
-            ["نسبة_الحضور", "أيام_الغياب", "دقائق_التأخير"],
-            ascending=[True, False, False]
-        ).copy()
-        st.dataframe(view, use_container_width=True, hide_index=True)
+    left_space, center_chart, right_space = st.columns([0.5, 5, 0.5])
 
-    with right:
-        st.subheader(" أفضل 15 حضورًا")
+    with center_chart:
+        st.markdown(
+            "<h3 style='text-align:center;'>أفضل 15 حضورًا</h3>",
+            unsafe_allow_html=True
+        )
+
         top_att = per_emp.sort_values(
             ["نسبة_الحضور", "دقائق_التأخير"],
             ascending=[False, True]
         ).head(15)
 
         fig_top = go.Figure()
+
         fig_top.add_trace(go.Bar(
             x=top_att["اسم الموظف"],
             y=top_att["نسبة_الحضور"],
@@ -1377,78 +1396,133 @@ with tabs[3]:
             marker_color=COLORS["green"],
             hovertemplate="<b>%{x}</b><br>حضور: %{y:.1f}%<extra></extra>"
         ))
-        apply_plotly_theme(fig_top, height=420,  showlegend=False, hovermode="closest")
-        fig_top.update_yaxes(title="%")
-        fig_top.update_xaxes(title="", tickangle=-35)
-        st.plotly_chart(fig_top, use_container_width=True, key="emp_top_att")
 
-    st.markdown("---")
-    st.subheader(" أقل 15 انضباطًا")
-
-
-
-
-    # =========================================================
-    # Non-Compliance (%): غياب + تأخير (>20 دقيقة) / إجمالي الأيام
-    # =========================================================
-    # =========================================================
-    # Non-Compliance (%): غياب + تأخير (>20 دقيقة) / إجمالي الأيام
-    # =========================================================
-    late20 = (
-        dff.assign(تأخير20=(dff["دقائق التأخير"] > 20).astype(int))
-        .groupby(["رقم الموظف", "اسم الموظف عرض"], as_index=False)
-        .agg(أيام_تأخير_20=("تأخير20", "sum"))
-        .rename(columns={"اسم الموظف عرض": "اسم الموظف"})
-    )
-
-    bad = per_emp.merge(late20, on=["رقم الموظف", "اسم الموظف"], how="left")
-    bad["أيام_تأخير_20"] = bad["أيام_تأخير_20"].fillna(0)
-
-    bad["أيام_عدم_الانضباط"] = bad["أيام_الغياب"] + bad["أيام_تأخير_20"]
-    bad["نسبة_عدم_الانضباط"] = np.where(
-        bad["سجلات"] > 0,
-        (bad["أيام_عدم_الانضباط"] / bad["سجلات"]) * 100,
-        0
-    )
-
-    bad15 = bad.sort_values("نسبة_عدم_الانضباط", ascending=False).head(15)
-
-    fig_bad = go.Figure()
-    fig_bad.add_trace(go.Bar(
-        x=bad15["اسم الموظف"],
-        y=bad15["نسبة_عدم_الانضباط"],
-        name="عدم الانضباط (%)",
-        marker_color=COLORS["red"],
-        customdata=np.stack([
-            bad15["أيام_عدم_الانضباط"].to_numpy(),
-            bad15["سجلات"].to_numpy(),
-            bad15["أيام_الغياب"].to_numpy(),
-            bad15["أيام_تأخير_20"].to_numpy(),
-        ], axis=-1),
-        hovertemplate=(
-            "<b>%{x}</b><br>"
-            "عدم الانضباط: <b>%{y:.1f}%</b><br>"
-            "أيام عدم الانضباط: %{customdata[0]:.0f}<br>"
-            "إجمالي الأيام: %{customdata[1]:.0f}<br>"
-            "غياب: %{customdata[2]:.0f}<br>"
-            "تأخير >20 دقيقة: %{customdata[3]:.0f}"
-            "<extra></extra>"
+        apply_plotly_theme(
+            fig_top,
+            height=600,
+            showlegend=False,
+            hovermode="closest"
         )
-    ))
 
-    apply_plotly_theme(
-        fig_bad,
-        height=620,
-        #title=" أعلى 15 عدم انضباط (%)",
-        showlegend=False,
-        hovermode="closest"
-    )
-    fig_bad.update_yaxes(title="نسبة عدم الانضباط %", rangemode="tozero")
-    fig_bad.update_xaxes(title="", tickangle=-35)
+        fig_top.update_layout(
+            margin=dict(l=40, r=40, t=30, b=130)
+        )
 
-    st.plotly_chart(fig_bad, use_container_width=True, key="emp_noncompliance_top15")
+        fig_top.update_yaxes(
+            title="%",
+            range=[0, 105]
+        )
 
-    st.caption(" المؤشر يعتمد على الغياب + التأخير فوق 20 دقيقة مقارنة بإجمالي الأيام.")
+        fig_top.update_xaxes(
+            title="",
+            tickangle=-30,
+            automargin=True
+        )
+
+        st.plotly_chart(
+            fig_top,
+            use_container_width=True,
+            key="emp_top_att"
+        )
+
+    # =========================================================
+    # أقل 15 انضباطًا
+    # =========================================================
+    st.markdown("---")
+
+    left_space2, center_chart2, right_space2 = st.columns([0.5, 5, 0.5])
+
+    with center_chart2:
+        st.markdown(
+            "<h3 style='text-align:center;'>أقل 15 انضباطًا</h3>",
+            unsafe_allow_html=True
+        )
+
+        late20 = (
+            dff.assign(تأخير20=(dff["دقائق التأخير"] > 20).astype(int))
+            .groupby(["رقم الموظف", "اسم الموظف عرض"], as_index=False)
+            .agg(أيام_تأخير_20=("تأخير20", "sum"))
+            .rename(columns={"اسم الموظف عرض": "اسم الموظف"})
+        )
+
+        bad = per_emp.merge(
+            late20,
+            on=["رقم الموظف", "اسم الموظف"],
+            how="left"
+        )
+
+        bad["أيام_تأخير_20"] = bad["أيام_تأخير_20"].fillna(0)
+
+        bad["أيام_عدم_الانضباط"] = (
+            bad["أيام_الغياب"] + bad["أيام_تأخير_20"]
+        )
+
+        bad["نسبة_عدم_الانضباط"] = np.where(
+            bad["سجلات"] > 0,
+            (bad["أيام_عدم_الانضباط"] / bad["سجلات"]) * 100,
+            0
+        )
+
+        bad15 = bad.sort_values(
+            "نسبة_عدم_الانضباط",
+            ascending=False
+        ).head(15)
+
+        fig_bad = go.Figure()
+
+        fig_bad.add_trace(go.Bar(
+            x=bad15["اسم الموظف"],
+            y=bad15["نسبة_عدم_الانضباط"],
+            name="عدم الانضباط (%)",
+            marker_color=COLORS["red"],
+            customdata=np.stack([
+                bad15["أيام_عدم_الانضباط"].to_numpy(),
+                bad15["سجلات"].to_numpy(),
+                bad15["أيام_الغياب"].to_numpy(),
+                bad15["أيام_تأخير_20"].to_numpy(),
+            ], axis=-1),
+            hovertemplate=(
+                "<b>%{x}</b><br>"
+                "عدم الانضباط: <b>%{y:.1f}%</b><br>"
+                "أيام عدم الانضباط: %{customdata[0]:.0f}<br>"
+                "إجمالي الأيام: %{customdata[1]:.0f}<br>"
+                "غياب: %{customdata[2]:.0f}<br>"
+                "تأخير >20 دقيقة: %{customdata[3]:.0f}"
+                "<extra></extra>"
+            )
+        ))
+
+        apply_plotly_theme(
+            fig_bad,
+            height=600,
+            showlegend=False,
+            hovermode="closest"
+        )
+
+        fig_bad.update_layout(
+            margin=dict(l=40, r=40, t=30, b=130)
+        )
+
+        fig_bad.update_yaxes(
+            title="نسبة عدم الانضباط %",
+            rangemode="tozero"
+        )
+
+        fig_bad.update_xaxes(
+            title="",
+            tickangle=-30,
+            automargin=True
+        )
+
+        st.plotly_chart(
+            fig_bad,
+            use_container_width=True,
+            key="emp_noncompliance_top15"
+        )
+
+        st.caption(
+            "المؤشر يعتمد على الغياب + التأخير فوق 20 دقيقة مقارنة بإجمالي الأيام."
+        )
 # =========================================================
 # Tab 5: Tables
 # =========================================================
